@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>확률을 이용한 자료구조 - Bloom Filter</title>
+    <style>
+        /* 기본 설정 및 리셋 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background-color: #0d1117; color: #c9d1d9; font-family: 'Malgun Gothic', sans-serif; }
+
+        /* 슬라이드 레이아웃,카메라 워킹 */
+        #viewport { width: 100vw; height: 100vh; overflow: hidden; position: relative; }
+        #wrapper { 
+            width: 100%; height: 100%; position: absolute; top: 0; left: 0; 
+            transition: transform 1.2s cubic-bezier(0.65, 0, 0.35, 1); 
+        }
+        .slide { 
+            position: absolute; width: 100vw; height: 100vh; padding: 60px 80px; 
+            display: flex; flex-direction: column; 
+        }
+
+        /* 2D 격자 배치 */
+        #slide1  { left: 0vw; top: 0vh; justify-content: center; align-items: center; text-align: center; }
+        #slide2  { left: 100vw; top: 0vh; }
+        #slide3  { left: 200vw; top: 0vh; }
+        #slide4  { left: 300vw; top: 0vh; }
+        #slide5  { left: 300vw; top: 100vh; } 
+        #slide6  { left: 400vw; top: 100vh; }
+        #slide7  { left: 400vw; top: 0vh; }   
+        #slide8  { left: 500vw; top: 0vh; justify-content: center; align-items: center; }
+        #slide9  { left: 600vw; top: 0vh; justify-content: center; align-items: center; }
+        #slide10 { left: 700vw; top: 0vh; }
+
+        /* 공통 타이포그래피 */
+        h1 { font-size: 64px; color: #58a6ff; margin-bottom: 10px; }
+        h2 { font-size: 42px; color: #79c0ff; border-left: 6px solid #58a6ff; padding-left: 20px; margin-bottom: 40px; }
+        h3 { font-size: 28px; color: #d2a8ff; margin-bottom: 15px; }
+        p, li { font-size: 22px; line-height: 1.8; margin-bottom: 15px; }
+
+        /* 2페이지 : 목차 */
+        .toc-list { list-style: none; padding: 0; margin-top: 40px; }
+        .toc-list li { font-size: 32px; margin-bottom: 25px; background: #161b22; padding: 20px; border-radius: 10px; border: 1px solid #30363d; }
+
+        /* 3페이지 : 이미지 영역 */
+        .layout-2col { display: flex; gap: 40px; height: 80%; }
+        .col-left { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; }
+        .col-right { flex: 1; border: 2px dashed #58a6ff; border-radius: 15px; display: flex; justify-content: center; align-items: center; color: #58a6ff; background: #161b22; }
+
+        /* 5페이지 : 이동 애니메이션 시각화 */
+        .viz-container { display: flex; flex-direction: column; align-items: center; gap: 30px; margin-top: 10px; position: relative; width: 100%; height: 80%; }
+        
+        .section-title { font-size: 18px; color: #8b949e; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        .btn-row { display: flex; gap: 15px; margin-bottom: 5px; }
+        
+        /* 이름 물리 버튼 */
+        .name-btn { 
+            position: relative; padding: 12px 28px; font-size: 18px; font-weight: bold;
+            background: #21262d; border: 2px solid #30363d; border-radius: 8px; 
+            color: #c9d1d9; cursor: pointer; transition: all 0.3s ease; 
+        }
+        .name-btn:hover { border-color: #58a6ff; background: #30363d; }
+        
+        /* 해시 함수 박스 */
+        .hash-box-wrapper { position: relative; width: 450px; height: 110px; margin: 15px 0; }
+        .hash-box { 
+            width: 100%; height: 100%; background: #161b22; border: 3px dashed #d2a8ff; border-radius: 15px; 
+            display: flex; justify-content: center; align-items: center; font-size: 24px; color: #d2a8ff;
+            font-weight: bold; transition: all 0.3s;
+        }
+        
+        /* 애니메이션 더미 객체 */
+        .flying-node {
+            position: absolute; padding: 12px 28px; font-size: 18px; font-weight: bold;
+            background: #58a6ff; color: #0d1117; border-radius: 8px;
+            z-index: 100; pointer-events: none; opacity: 0;
+            transition: all 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        /* 비트 그리드 */
+        .bit-array { display: flex; gap: 12px; margin-top: 10px; }
+        .bit { 
+            width: 75px; height: 75px; background: #161b22; border: 2px solid #30363d; border-radius: 10px;
+            display: flex; justify-content: center; align-items: center; font-size: 28px; font-weight: bold;
+            color: #8b949e; transition: all 0.4s ease;
+        }
+        .bit.on { background: #238636; border-color: #2ea043; color: white; box-shadow: 0 0 20px rgba(46, 160, 67, 0.6); }
+
+        #viz-log { font-size: 20px; color: #58a6ff; min-height: 40px; margin-top: 10px; text-align: center; font-weight: bold; }
+
+        /* 6페이지: 공식 */
+        .math-step { background: #161b22; padding: 20px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #8b949e; opacity: 0; transform: translateX(-20px); transition: 0.5s; }
+        .math-step.visible { opacity: 1; transform: translateX(0); }
+
+        /* 7페이지: 슬라이더 */
+        .calc-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; background: #161b22; padding: 40px; border-radius: 15px; }
+        .control-group { margin-bottom: 20px; }
+        .control-group label { display: block; margin-bottom: 10px; font-size: 20px; }
+        input[type=range] { width: 100%; cursor: pointer; }
+        .result-box { text-align: center; border: 2px dashed #3fb950; padding: 40px; border-radius: 15px; }
+        .result-val { font-size: 64px; color: #3fb950; font-weight: bold; margin-top: 20px; }
+
+        /* 네비게이션 */
+        #nav-btns { position: fixed; bottom: 30px; right: 40px; z-index: 1000; }
+        .nav-btn { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 15px 25px; font-size: 20px; border-radius: 8px; cursor: pointer; margin-left: 10px; }
+        .nav-btn:hover { background: #30363d; border-color: #8b949e; }
+    </style>
+</head>
+<body>
+
+<div id="ghost-node" class="flying-node"></div>
+
+<div id="viewport">
+    <div id="wrapper">
+        <div class="slide" id="slide1">
+            <h3 style="letter-spacing: 5px;">획률과 통계 추가 탐구</h3>
+            <h1 style="font-size: 80px; margin: 20px 0;">확률을 이용한 자료구조</h1>
+            <h1 style="font-size: 60px; color: white;">Bloom Filter</h1>
+            <p style="margin-top: 60px; font-size: 28px;">발표자:30320 임성빈</p>
+        </div>
+
+        <div class="slide" id="slide2">
+            <h2>목차</h2>
+            <ul class="toc-list">
+                <li>1. 블룸 필터 등장 배경</li>
+                <li>2. 블룸 필터 원리</li>
+                <li>3. 블룸 필터 원리 시각화</li>
+                <li>4. 블룸필터와 확률의 관계</li>
+                <li>5. 결론 및 소감</li>
+            </ul>
+        </div>
+
+        <div class="slide" id="slide3">
+            <h2 style="position: absolute; top: 60px; left: 80px;">1. 블룸 필터 등장 배경</h2>
+            <div class="layout-2col" style="margin-top: 7px;">
+                <div class="col-left">
+                    <h2>버튼 하워드 블룸 (1970)</h2>
+                    <h3>끝도 없이 늘어나는 데이터를 어떻게 처리할 것인가?</h3>
+                    <h3>데이터를 직접 저장하는 대신 데이터가 존재한다는 흔적만 저장한다면?</h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="slide" id="slide4">
+            <h2>2. 블룸 필터 원리</h2>
+            <div style="background: #161b22; padding: 40px; border-radius: 15px; margin-top: 20px;">
+                <p><strong>구조:</strong> 비트 배열과 여러 개의 독립적인 해시 함수</p>
+                <ul style="margin-left: 30px;">
+                    <li><strong>초기화:</strong> m개의 비트를 모두 0으로 설정</li>
+                    <li><strong>삽입:</strong> 데이터를 k개의 해시 함수에 넣어 나온 인덱스 위치의 비트를 모두 1로 변경</li>
+                    <li><strong>검사:</strong> 데이터를 확인 시, 동일하게 해시 함수를 돌려 해당 인덱스들이 <strong>모두 1인지</strong> 확인</li>
+                </ul>
+                <div style="margin-top: 30px; border-left: 4px solid #faf8f8; padding-left: 20px; color: #f9f7f7;">
+                    <p>없다고 하면 없는거고,있다고 하면 있을수도 없을수도</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="slide" id="slide5">
+            <h2>3. 원리 시각화</h2>
+            <div class="viz-container">
+                
+                <div>
+                    <span class="section-title">STEP 1. 데이터 등록</span>
+                    <div class="btn-row">
+                        <button class="name-btn" id="btn-add1" onclick="triggerAnimation('add', '김효주', [1, 4], this)">김효주 등록</button>
+                        <button class="name-btn" id="btn-add2" onclick="triggerAnimation('add', '김동우', [2, 7], this)">김동우 등록</button>
+                        <button class="name-btn" id="btn-add3" onclick="triggerAnimation('add', '임성빈', [4, 6], this)">임성빈 등록</button>
+                    </div>
+                </div>
+
+                <div>
+                    <span class="section-title">STEP 2. 실시간 데이터 존재 여부 확인</span>
+                    <div class="btn-row">
+                        <button class="name-btn" style="border-color: #3fb950;" onclick="triggerAnimation('check', '김효주', [1, 4], this)">김효주 검사</button>
+                        <button class="name-btn" style="border-color: #3fb950;" onclick="triggerAnimation('check', '카리나', [1, 6], this)">카리나 검사</button>
+                    </div>
+                </div>
+
+                <div class="hash-box-wrapper">
+                    <div class="hash-box" id="hash-box">해시 함수</div>
+                </div>
+
+                <div class="bit-array">
+                    <div class="bit" id="bit0">0</div><div class="bit" id="bit1">0</div>
+                    <div class="bit" id="bit2">0</div><div class="bit" id="bit3">0</div>
+                    <div class="bit" id="bit4">0</div><div class="bit" id="bit5">0</div>
+                    <div class="bit" id="bit6">0</div><div class="bit" id="bit7">0</div>
+                </div>
+                
+                <p id="viz-log">버튼을 눌러 시뮬레이션을 시작</p>
+            </div>
+        </div>
+
+        <div class="slide" id="slide6">
+            <h2>4. 블룸 필터와 확률의 연관성</h2>
+            <p>오탐이 발생할 확률은 수학적으로 계산 가능하다</p>
+            <button onclick="showNextMath()" style="padding: 10px 20px; margin-bottom: 20px; background: #58a6ff; color: #0d1117; border: none; border-radius: 5px; cursor: pointer; font-size: 18px;">식 확장하기 (Click)</button>
+            
+            <div>
+                <div class="math-step" id="math1">
+                    <h3>1. 단일 해시 함수가 특정 비트를 선택하지 않을 확률</h3>
+                    <p>1 - (1/m)</p>
+                </div>
+                <div class="math-step" id="math2">
+                    <h3>2. n개의 원소를 k개의 해시 함수로 넣었을 때 특정 비트가 여전히 선택되지 않을 확률</h3>
+                    <p>(1 - 1/m)^(kn)</p>
+                </div>
+                <div class="math-step" id="math3">
+                    <h3>3. 반대로 특정 비트가 1이 되어 있을 확률</h3>
+                    <p>1 - (1 - 1/m)^(kn)  ≈  1 - e^(-kn/m)</p>
+                </div>
+                <div class="math-step" id="math4" style="border-left-color: #ff7b72;">
+                    <h3 style="color: #ff7b72;">4. 최종 오탐 확률</h3>
+                    <p>k개의 해시 인덱스가 우연히 모두 1일 확률 = (1 - e^(-kn/m))^k</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="slide" id="slide7">
+            <h2>5. 실시간 오탐률 시뮬레이션</h2>
+            <div class="calc-panel">
+                <div>
+                    <div class="control-group">
+                        <label>비트 배열 크기 (m): <span id="m-val" style="color:#58a6ff;">1000</span></label>
+                        <input type="range" id="slider-m" min="500" max="5000" step="100" value="1000" oninput="calcFPR()">
+                    </div>
+                    <div class="control-group">
+                        <label>삽입 데이터 수 (n): <span id="n-val" style="color:#58a6ff;">100</span></label>
+                        <input type="range" id="slider-n" min="10" max="500" step="10" value="100" oninput="calcFPR()">
+                    </div>
+                    <div class="control-group">
+                        <label>해시 함수 개수 (k): <span id="k-val" style="color:#58a6ff;">5</span></label>
+                        <input type="range" id="slider-k" min="1" max="15" step="1" value="5" oninput="calcFPR()">
+                    </div>
+                </div>
+                <div class="result-box">
+                    <h3>이론적 오탐 확률</h3>
+                    <div class="result-val" id="fpr-result">1.23%</div>
+                    <h3>최적의 해시 함수 개수</h3>
+                    <div class="result-val" id="optimal-k">m/n * ln2</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="slide" id="slide8"> 
+            <h2 style="position: absolute; top: 60px; left: 80px;">6. 소감</h2> 
+            <div style="background: #161b22; padding: 60px; border-radius: 20px; border: 1px solid #30363d; max-width: 900px; margin-top: 140px;"> 
+            <p style="font-size: 32px; line-height: 1.6; text-align: justify;"> 
+            컴퓨터 공학을 공부해오면서 문제를 정확하게 해결하는 것이 가장 중요하다고 생각해왔습니다. 하지만 블룸 필터를 탐구하며 새로운 시각을 얻게 되었습니다. 하드웨어 리소스는 한정되어 있고 처리해야 할 데이터는 기하급수적으로 늘어나는 현대 빅데이터 환경에서는, 허용 가능한 오차 내에서 확률을 조금 버리고 속도를 챙기는 것이 더 나은 방법이 될 수 있음을 알게 되었습니다. 수학적 확률 모델을 바탕으로 비트 배열의 크기와 해시 함수 개수를 조절하여 오탐률을 최소화하는 과정은, 수학이 컴퓨터에서 중요한 도구라는 걸 다시 한번 알려주었습니다. 이번 탐구를 계기로 정확도뿐만 아니라 효율, 속도 등 다른 요소까지 종합적으로 고려하는 새로운 시각을 얻을 수 있었으며 다양한 시각의 중요성도 알게 되었습니다. 
+            </p> 
+            </div> 
+        </div>
+
+
+        <div class="slide" id="slide9">
+            <h1 style="font-size: 100px; color: #3fb950; letter-spacing: 10px;">감사합니다</h1>
+        </div>
+
+        <div class="slide" id="slide10">
+            <h2>참고 자료</h2>
+            <ul style="background: #161b22; padding: 40px; border-radius: 15px; margin-top: 40px; list-style: circle; padding-left: 60px;">
+                <li><a href="https://dl.acm.org/doi/10.1145/362686.362692" target="_blank">블룸 필터 발표 논문 - Space/time trade-offs in hash coding with allowable errors</a></li>
+                <li><a href="https://www.geeksforgeeks.org/python/bloom-filters-introduction-and-python-implementation/" target="_blank">GeeksforGeeks - Bloom Filters - Introduction and Implementation</a></li>
+                <li><a href="https://velog.io/@haron/자료구조-BloomFilter-적용하기" target="_blank">hocaron.log - [자료구조] BloomFilter 는 언제 사용할 수 있을까?</a></li>
+                <li><a href="https://docs.cloud.google.com/memorystore/docs/valkey/about-bloom-filters?hl=ko" target="_blank">Google Cloud - 블룸 필터 정보</a></li>
+                <li><a href="https://codingapple.com/blog/bloom-filter/" target="_blank">코딩애플 - DB 사용량을 줄이는 블룸필터 Bloom Filter</a></li>
+                <li><a href="https://youtu.be/rIl5G2aVfMQ?si=SoFI6FrmQemkp_EP" target="_blank">코딩애플 - 램값이 비쌀 때 쓰는 자료구조</a></li>
+                <li><a href="https://news.hada.io/topic?id=21757" target="_blank">GeekNews - 블룸 필터 예제로 이해하기</a></li>
+                <li><a href="https://youtu.be/2kdo2ZLTG_E?si=sQt6kblhVLsJzYKY" target="_blank">슬라이드 아이디어 : 관종이 될 수 있는 PPT</a></li>
+            </ul>
+        </div>
+
+    </div>
+</div>
+
+<div id="nav-btns">
+    <button class="nav-btn" onclick="moveSlide(-1)">이전</button>
+    <button class="nav-btn" onclick="moveSlide(1)">다음</button>
+</div>
+
+<script>
+    // 1. 네비게이션 제어 (격자형 이동 좌표 설정)
+    let currentIdx = 0;
+    const coords = [
+        {x: 0, y: 0}, // p1
+        {x: 1, y: 0}, // p2
+        {x: 2, y: 0}, // p3
+        {x: 3, y: 0}, // p4
+        {x: 3, y: 1}, // p5 (4페이지 아래 배치: y=1)
+        {x: 4, y: 1}, // p6
+        {x: 4, y: 0}, // p7 (6페이지 위에 배치: y=0)
+        {x: 5, y: 0}, // p8
+        {x: 6, y: 0}, // p9
+        {x: 7, y: 0}  // p10
+    ];
+
+    function moveSlide(dir) {
+        currentIdx += dir;
+        if(currentIdx < 0) currentIdx = 0;
+        if(currentIdx > 9) currentIdx = 9;
+        
+        const wrapper = document.getElementById('wrapper');
+        const x = coords[currentIdx].x * 100;
+        const y = coords[currentIdx].y * 100;
+        wrapper.style.transform = `translate(-${x}vw, -${y}vh)`;
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if(e.key === 'ArrowRight' || e.key === 'ArrowDown') moveSlide(1);
+        if(e.key === 'ArrowLeft' || e.key === 'ArrowUp') moveSlide(-1);
+    });
+
+    // 2. 5페이지 물리 비행 애니메이션
+    const registeredData = new Set();
+    const activatedBits = new Set();
+
+    function triggerAnimation(type, name, indices, element) {
+        const ghost = document.getElementById('ghost-node');
+        const hashBox = document.getElementById('hash-box');
+        const log = document.getElementById('viz-log');
+        
+        // 1) 클릭한 원래 버튼의 위치와 크기 구하기
+        const btnRect = element.getBoundingClientRect();
+        const hashRect = hashBox.getBoundingClientRect();
+        
+        // 2) 유령 노드를 원래 버튼 자리에 띄우기
+        ghost.style.left = `${btnRect.left}px`;
+        ghost.style.top = `${btnRect.top}px`;
+        ghost.style.width = `${btnRect.width}px`;
+        ghost.style.height = `${btnRect.height}px`;
+        ghost.innerText = name;
+        ghost.style.opacity = '1';
+        ghost.style.transform = 'scale(1)';
+        
+        // 3) HASH BOX로 날아가는 애니메이션
+        setTimeout(() => {
+            const targetX = hashRect.left + (hashRect.width / 2) - (btnRect.width / 2);
+            const targetY = hashRect.top + (hashRect.height / 2) - (btnRect.height / 2);
+            
+            ghost.style.left = `${targetX}px`;
+            ghost.style.top = `${targetY}px`;
+            ghost.style.transform = 'scale(0.85)';
+            log.innerHTML = `데이터 '<strong>${name}</strong>'이(가) 해시 함수를 통과 중`;
+        }, 50);
+
+        // 4) 해시 완료 후 비트로 퍼지는 연출 및 결과 확인
+        setTimeout(() => {
+            ghost.style.opacity = '0'; // 도착하면 자연스럽게 투명하게 사라짐
+            hashBox.style.transform = 'scale(1.05)';
+            hashBox.style.borderColor = '#58a6ff';
+            
+            setTimeout(() => { hashBox.style.transform = 'scale(1)'; hashBox.style.borderColor = '#d2a8ff'; }, 200);
+
+            if (type === 'add') {
+                // [등록 프로세스]
+                indices.forEach(idx => {
+                    const bitCell = document.getElementById(`bit${idx}`);
+                    bitCell.classList.add('on');
+                    bitCell.innerText = '1';
+                    activatedBits.add(idx);
+                });
+                registeredData.add(name);
+                log.innerHTML = `[성공] '<strong>${name}</strong>' 등록 완료! 비트 인덱스 [ ${indices.join(', ')} ] 활성화.`;
+            } else {
+                // [검사 프로세스]
+                // 켜져야 할 인덱스들이 모두 켜진 상태(activatedBits)에 속하는지 체크
+                const allBitsOn = indices.every(idx => activatedBits.has(idx));
+                const isActuallyRegistered = registeredData.has(name);
+
+                if (!allBitsOn) {
+                    // 확실히 없음
+                    log.innerHTML = `<span style="color: #ff7b72;">[검사 결과] '<strong>${name}</strong>'은(는) 확실히 <b>없습니다</b>. (하나 이상의 비트가 0)</span>`;
+                } else {
+                    if (isActuallyRegistered) {
+                        // 정상 탐색
+                        log.innerHTML = `<span style="color: #3fb950;">[검사 결과] '<strong>${name}</strong>' 데이터 존재 확인!</span>`;
+                    } else {
+                        // 오탐
+                        log.innerHTML = `<span style="color: #ea6055; font-size: 22px; text-shadow: 0 0 10px rgba(234,96,85,0.4);">
+                            ⚠️ '<strong>${name}</strong>'은(는) 등록한 적이 없지만, <br>
+                            우연히 해시 비트 [ ${indices.join(', ')} ]가 모두 1이어서 데이터가 존재하는 것처럼 판단됨
+                        </span>`;
+                    }
+                }
+            }
+        }, 850);
+    }
+
+    // 3. 수식 애니메이션 (6페이지)
+    let mathStep = 1;
+    function showNextMath() {
+        if(mathStep <= 4) {
+            document.getElementById(`math${mathStep}`).classList.add('visible');
+            mathStep++;
+        }
+    }
+
+    // 4. FPR 계산기 (7페이지)
+    function calcFPR() {
+        const m = document.getElementById('slider-m').value;
+        const n = document.getElementById('slider-n').value;
+        const k = document.getElementById('slider-k').value;
+
+        document.getElementById('m-val').innerText = m;
+        document.getElementById('n-val').innerText = n;
+        document.getElementById('k-val').innerText = k;
+
+        const exponent = -(k * n) / m;
+        const fpr = Math.pow(1 - Math.exp(exponent), k);
+        
+        document.getElementById('fpr-result').innerText = (fpr * 100).toFixed(4) + '%';
+    }
+    calcFPR();
+</script>
+</body>
+</html>
